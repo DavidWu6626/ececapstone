@@ -74,7 +74,11 @@ def doBinary():
         ser.write(b'\xF0')
         ser.flush()
         sleep(0.5)
-        
+
+def fakeCamStream():
+    while(True):
+        print("doing camera streaming")
+        sleep(2)
 
 def main():
     global ser
@@ -82,11 +86,14 @@ def main():
     print(ser)
     ser.rts = False
     ser.dtr = False
-    # serial_recv_thread = threading.Thread(target=read_serial(ser))
-    # serial_recv_thread.daemon = True
-    # serial_recv_thread.start()
+    move_thread = threading.Thread(target=doCreepingLine)
+    move_thread.daemon = True
+    move_thread.start()
+    while(True):
+        print("doing camera streaming")
+        sleep(2)
     # testMove()
-    doCreepingLine()
+
     # doBinary()
     ser.close()
 
