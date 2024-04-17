@@ -18,22 +18,34 @@ def read_serial(ser):
             
 # 172.26.171.155
 def testMove():
-    msg = {"T":1,"L":-136,"R":136}
-    for i in range(1):
-        data = json.dumps(msg).encode() + b'\n'
-        ser.write(bytearray(data))
+    sendRoverMove({"T":71})
+    data = ser.readline().decode()
+    while(not data):
+        if data:
+            print(f"Received: {data}", end='')
+            break
+    dir = 'L'
+    sendRoverMove(getJSONcmd(dir))
+    sendRoverMove({"T":71})
+    data = ser.readline().decode()
+    while(not data):
+        if data:
+            print(f"Received: {data}", end='')
+            break
+        
+
+
+def doBinary():
+    while(True):
+        print("Doing this Binary")
+        ser.write(b'\xF0')
         ser.flush()
-        sleep(3.5)
+        sleep(0.5)
 
-def doCreepingLine():
-    num_creeps = 1 # CHANGE THIS
-    movementPath = ['F','F','L','F','L','F','F','R','F','R']
-    for _ in range(num_creeps): 
-        for dir in movementPath:
-            #TODO get CV data, receive data, change loop if needed
-            sendRoverMoves(dir)
-
-
+def fakeCamStream():
+    while(True):
+        print("doing camera streaming")
+        sleep(2)
 
 # Input: Movement ('L','R','F','B','N') (N for nothing)
 # Output: JSON contents
@@ -50,9 +62,40 @@ def getJSONcmd(dir):
         msg = {"T":1,"L":0,"R":0}
     return msg
 
+personDetected = False
+degreeOffset = 0
+def doCreepingLine():
+    num_creeps = 1 # CHANGE THIS
+    movementPath = ['F','F','L','F','L','F','F','R','F','R']
+    for _ in range(num_creeps): 
+        for dir in movementPath:
+            sendRoverMove(getJSONcmd(dir))
+            if personDetected: # person found!
+                break
+        if personDetected: # person found!
+            break 
+    doTargetMove(degreeOffset) # degreeOffset should be set by here
 
-def sendRoverMoves(dir):
-    msg = getJSONcmd(dir)  
+# def doRandSearch():
+
+
+def doTargetMove(degree):
+    degRange = 45
+    motorRange = 132
+    while(personDetected):
+        # degree comes in the range -45 to 45, change this if needed
+        degree += range
+        proportion = degree / (degRange*2)
+        motor = round(proportion * (motorRange*2))
+        msg = {"T":1,"L":-motor,"R":motor}
+        sendRoverMove(msg)
+        msg = {"T":1,"L":50,"R":50}
+        sendRoverMove(msg)
+    # doRandSearch()
+
+
+
+def sendRoverMove(msg):
     data = json.dumps(msg).encode() + b'\n'
     print(data)
 
@@ -67,18 +110,6 @@ def sendRoverMoves(dir):
         print (e)
         pass
     sleep(3.2)
-
-def doBinary():
-    while(True):
-        print("Doing this Binary")
-        ser.write(b'\xF0')
-        ser.flush()
-        sleep(0.5)
-
-def fakeCamStream():
-    while(True):
-        print("doing camera streaming")
-        sleep(2)
 
 def main():
     global ser
