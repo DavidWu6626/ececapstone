@@ -109,7 +109,7 @@ def sendRoverMove(msg):
     except Exception as e:
         print (e)
         pass
-    sleep(3.2)
+    sleep(1)
 
 def main():
     global ser

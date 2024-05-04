@@ -27,6 +27,7 @@ from Focuser import Focuser
 
 # for location
 from flask import Flask, jsonify
+from flask_cors import CORS
 from geopy.geocoders import Photon
 from geopy.exc import GeocoderTimedOut, GeocoderInsufficientPrivileges
 
@@ -101,7 +102,9 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     daemon_threads = True
 
 # for streaming
-app = Flask(__name__)
+picam2 = Picamera2()
+picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
+output = StreamingOutput()
 
 def doStreaming():
     picam2.start_recording(JpegEncoder(), FileOutput(output))
@@ -110,6 +113,9 @@ def doStreaming():
     server.serve_forever()        
 
 # for location
+app = Flask(__name__)
+CORS(app)
+
 @app.route('/location')
 def get_location():
     try:
@@ -127,6 +133,31 @@ def get_location():
 
 def doLocation():
     app.run(host='0.0.0.0', port=5000, debug=False)
+
+# for moving
+ser = Serial('/dev/serial0', baudrate=1000000, write_timeout=5, timeout=0) # should/can use /dev/ttyS0
+print(ser)
+ser.rts = False
+ser.dtr = False
+infofile = open("info.txt", "w")
+infofile.write("Person Not Found")
+infofile.close()
+infofile = open("info.txt", "r")
+gpio.setmode(gpio.BCM)
+gpio.setup(17, gpio.OUT)
+seenFirstTime = False
+
+# for PTZ
+focuser = Focuser(1)
+# for x: 0 is right, 90 is middle, 180 is left
+x_right_limit = 0
+x_left_limit = 180
+curr_x_limit = focuser.get(Focuser.OPT_MOTOR_X) # should be 90 at first
+# for y: 0 is bottom, 90 is up
+y_limit = 0
+curr_y_limit = focuser.get(Focuser.OPT_MOTOR_Y) # should be 90 at first
+# scanLeft means to tick PTZ leftwards, else rightwards
+scanLeft = True
 
 # Output: True if person is found
 # Sets personDetected var to True if person is found
@@ -193,7 +224,7 @@ def doTargetMove():
         if (abs(x_degree) < 4 and abs(y_degree) < 1): # person is in the center! FIREEEE!
             gpio.output(17, gpio.HIGH)
             sendRoverMove(getJSONcmd('N'))
-            sleep(0.1)
+            sleep(0.5)
         else:
             if (abs(x_degree) >= 4): # fix x
                 gpio.output(17, gpio.LOW)
@@ -248,7 +279,21 @@ def doMove():
                 break
             infofile.seek(0)
             sendRoverMove(getJSONcmd(dir))
-            #sleep(0.1)
+            global curr_x_limit
+            global scanLeft
+            if scanLeft:   
+                motor_step = 1
+                curr_x_limit += motor_step
+                focuser.set(Focuser.OPT_MOTOR_X,focuser.get(Focuser.OPT_MOTOR_X) + motor_step)
+                if curr_x_limit == 120:
+                    scanLeft = False
+            else:
+                motor_step = -1
+                curr_x_limit += motor_step
+                focuser.set(Focuser.OPT_MOTOR_X,focuser.get(Focuser.OPT_MOTOR_X) + motor_step)
+                if curr_x_limit == 60:
+                    scanLeft = True
+            sleep(0.1)
         if personDetected: # person found!
             sendRoverMove(getJSONcmd('N'))
             #sleep(0.1)
@@ -261,50 +306,10 @@ def doMove():
 
 # main function
 def main():
-    # moving
-    global ser
-    ser = Serial('/dev/serial0', baudrate=1000000, write_timeout=5, timeout=0) # should/can use /dev/ttyS0
-    print(ser)
-    ser.rts = False
-    ser.dtr = False
-    global infofile
-    infofile = open("info.txt", "w")
-    infofile.write("Person Not Found")
-    infofile.close()
-    infofile = open("info.txt", "r")
-    gpio.setmode(gpio.BCM)
-    gpio.setup(17, gpio.OUT)
-    global seenFirstTime
-    seenFirstTime = False
-
-    # streaming
-    global picam2
-    picam2 = Picamera2()
-    picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
-    global output
-    output = StreamingOutput()
-
-    # PTZ
-    global focuser
-    focuser = Focuser(1)
-    # for x: 0 is right, 90 is middle, 180 is left
-    global x_right_limit
-    x_right_limit = 0
-    global x_left_limit
-    x_left_limit = 180
     global curr_x_limit
-    curr_x_limit = focuser.get(Focuser.OPT_MOTOR_X) # should be 90 at first
-    # for y: 0 is bottom, 90 is up
-    global y_limit
-    y_limit = 0
     global curr_y_limit
-    curr_y_limit = focuser.get(Focuser.OPT_MOTOR_Y) # should be 90 at first
-
-    # location
-
-    # main code
     try:
-        motor_step = -75
+        motor_step = -85
         curr_y_limit += motor_step
         focuser.set(Focuser.OPT_MOTOR_Y,focuser.get(Focuser.OPT_MOTOR_Y) + motor_step)
         move_thread = threading.Thread(target=doMove)
